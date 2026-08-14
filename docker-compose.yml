@@ -1,0 +1,128 @@
+services:
+
+  # ─── PostgreSQL + pgvector ──────────────────────────────────────────────────
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: uall-ia-db
+    environment:
+      POSTGRES_USER:     ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB:       ${POSTGRES_DB:-postgres}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      # Migrations executadas automaticamente na primeira inicialização
+      - ./agent/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  # ─── PostgREST — API REST sobre o PostgreSQL (camada do Supabase) ───────────
+  rest:
+    image: postgrest/postgrest:v12.2.0
+    container_name: uall-ia-rest
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGRST_DB_URI:             postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-postgres}
+      PGRST_DB_SCHEMA:          public
+      PGRST_DB_ANON_ROLE:       anon
+      PGRST_JWT_SECRET:         ${JWT_SECRET:-your-super-secret-jwt-token-with-at-least-32-characters-long}
+      PGRST_DB_USE_LEGACY_GUCS: "false"
+    restart: unless-stopped
+
+  # ─── Gateway nginx — expõe /rest/v1/* compatível com supabase-js ────────────
+  gateway:
+    image: nginx:alpine
+    container_name: uall-ia-gateway
+    ports:
+      - "${SUPABASE_PORT:-8000}:8000"
+    volumes:
+      - ./agent/nginx/gateway.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - rest
+    restart: unless-stopped
+
+  # ─── Redis — cache de respostas + rate limiting ─────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: uall-ia-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # ─── Agent — LangGraph + Fastify ────────────────────────────────────────────
+  agent:
+    build: ./agent
+    container_name: uall-ia-agent
+    ports:
+      - "${PORT:-3000}:3000"
+    env_file:
+      - ./agent/.env
+    environment:
+      # Sobrescreve as URLs para usar a rede interna do Docker
+      REDIS_URL:        redis://redis:6379
+      SUPABASE_URL:     http://gateway:8000
+    extra_hosts:
+      # Necessário no Linux para host.docker.internal resolver para o gateway do Docker
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+      gateway:
+        condition: service_started
+    volumes:
+      - ./agent/data/whatsapp-session:/app/data/whatsapp-session
+      - ./agent/data/models:/app/data/models
+    restart: unless-stopped
+
+  # ─── Socket — bridge WebSocket entre o chat e o agent ──────────────────────
+  socket:
+    build: ./socket
+    container_name: uall-ia-socket
+    ports:
+      - "${SOCKET_PORT:-3001}:3001"
+    environment:
+      PORT:        3001
+      AGENT_URL:   http://agent:3000
+      CORS_ORIGIN: "*"
+    depends_on:
+      - agent
+    restart: unless-stopped
+
+  # ─── Chat — SPA React servida via nginx ─────────────────────────────────────
+  chat:
+    build:
+      context: ./chat
+      args:
+        VITE_BRAND_NAME:     ${VITE_BRAND_NAME:-U-all Solutions}
+        VITE_BRAND_TAGLINE:  ${VITE_BRAND_TAGLINE:-Wi-Fi Marketing e captação de dados}
+        VITE_FONT_SANS:      ${VITE_FONT_SANS:-Inter}
+        VITE_FONT_SERIF:     ${VITE_FONT_SERIF:-Inter}
+        VITE_FONT_MONO:      ${VITE_FONT_MONO:-JetBrains Mono}
+        VITE_SOCKET_URL:     ${VITE_SOCKET_URL:-http://localhost:3001}
+        VITE_AGENT_URL:      ${VITE_AGENT_URL:-http://localhost:3000}
+    container_name: uall-ia-chat
+    ports:
+      - "${CHAT_PORT:-8080}:80"
+    depends_on:
+      - socket
+      - agent
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  redis-data:
