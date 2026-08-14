@@ -66,8 +66,6 @@ services:
   agent:
     build: ./agent
     container_name: uall-ia-agent
-    ports:
-      - "${PORT:-3000}:3000"
     env_file:
       - ./agent/.env
     environment:
@@ -87,20 +85,38 @@ services:
     volumes:
       - ./agent/data/whatsapp-session:/app/data/whatsapp-session
       - ./agent/data/models:/app/data/models
+    networks:
+      - default
+      - traefik_public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik_public"
+      - "traefik.http.routers.agent.rule=Host(`${DOMAIN_AGENT}`)"
+      - "traefik.http.routers.agent.entrypoints=websecure"
+      - "traefik.http.routers.agent.tls.certresolver=le"
+      - "traefik.http.services.agent.loadbalancer.server.port=3000"
     restart: unless-stopped
 
   # ─── Socket — bridge WebSocket entre o chat e o agent ──────────────────────
   socket:
     build: ./socket
     container_name: uall-ia-socket
-    ports:
-      - "${SOCKET_PORT:-3001}:3001"
     environment:
       PORT:        3001
       AGENT_URL:   http://agent:3000
-      CORS_ORIGIN: "*"
+      CORS_ORIGIN: ${CORS_ORIGIN:-https://uallia.cybernotech.com}
     depends_on:
       - agent
+    networks:
+      - default
+      - traefik_public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik_public"
+      - "traefik.http.routers.socket.rule=Host(`${DOMAIN_SOCKET}`)"
+      - "traefik.http.routers.socket.entrypoints=websecure"
+      - "traefik.http.routers.socket.tls.certresolver=le"
+      - "traefik.http.services.socket.loadbalancer.server.port=3001"
     restart: unless-stopped
 
   # ─── Chat — SPA React servida via nginx ─────────────────────────────────────
@@ -113,15 +129,26 @@ services:
         VITE_FONT_SANS:      ${VITE_FONT_SANS:-Inter}
         VITE_FONT_SERIF:     ${VITE_FONT_SERIF:-Inter}
         VITE_FONT_MONO:      ${VITE_FONT_MONO:-JetBrains Mono}
-        VITE_SOCKET_URL:     ${VITE_SOCKET_URL:-http://localhost:3001}
-        VITE_AGENT_URL:      ${VITE_AGENT_URL:-http://localhost:3000}
+        VITE_SOCKET_URL:     ${VITE_SOCKET_URL:-https://ws.uallia.cybernotech.com}
+        VITE_AGENT_URL:      ${VITE_AGENT_URL:-https://api.uallia.cybernotech.com}
     container_name: uall-ia-chat
-    ports:
-      - "${CHAT_PORT:-8080}:80"
     depends_on:
       - socket
       - agent
+    networks:
+      - traefik_public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik_public"
+      - "traefik.http.routers.chat.rule=Host(`${DOMAIN_CHAT}`)"
+      - "traefik.http.routers.chat.entrypoints=websecure"
+      - "traefik.http.routers.chat.tls.certresolver=le"
+      - "traefik.http.services.chat.loadbalancer.server.port=80"
     restart: unless-stopped
+
+networks:
+  traefik_public:
+    external: true
 
 volumes:
   postgres-data:
