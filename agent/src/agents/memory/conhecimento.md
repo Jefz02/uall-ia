@@ -67,11 +67,17 @@ A U-all tem quatro frentes de produto:
 
 ### Experience — sob consulta
 Tudo do Marketing, mais:
-- Agentes de IA
-- Chatbot de qualificação inteligente
-- Categorização automática por IA
+- Agentes com Inteligência Artificial
+- Chatbots avançados com qualificação inteligente de leads
+- Categorização automática dos atendimentos com IA
 - Dashboards personalizados
-- Suporte dedicado
+- Tela analítica da origem de contato
+- Inteligência artificial nativa e APIs avançadas
+- Usuários ilimitados
+- Acompanhamento mensal com especialista
+- Suporte prioritário com atendimento dedicado
+
+> **Atenção:** "Agentes com Inteligência Artificial" e "Chatbots com qualificação inteligente de leads" são dois itens distintos do plano — não resuma como se fosse uma coisa só (ex.: não diga "agentes de IA que fazem a qualificação via chatbot").
 
 > **Regra de qualificação:** o plano Experience deve SEMPRE ser encaminhado direto para "falar com um especialista" — não há preço fechado publicado, e a venda é consultiva.
 
